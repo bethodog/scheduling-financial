@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transferências Financeiras</title>
+  <base href="/">
+  <script>
+    global = window;
+    process = { env: { NODE_ENV: 'development' } };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <h2>Inserir Dados de Transferência</h2>
+    <form id="insert-form">
+      <label for="contaOrigem">Conta Origem:</label>
+      <input type="text" id="contaOrigem" name="contaOrigem" required><br><br>
+
+      <label for="contaDestino">Conta Destino:</label>
+      <input type="text" id="contaDestino" name="contaDestino" required><br><br>
+
+      <label for="valor">Valor:</label>
+      <input type="text" id="valor" name="valor" required><br><br>
+
+      <label for="dataFutura">Data de Agendamento:</label>
+      <input type="date" id="dataFutura" name="dataFutura" required><br><br>
+
+      <button type="submit">Inserir</button>
+      <p id="mensagem"></p>
+
+      <button id="mostrarExtrato">Extrato</button>
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th>Conta Origem</th>
+            <th>Conta Destino</th>
+            <th>Valor</th>
+            <th>Taxa (%)</th>
+            <th>Valor Taxado</th>
+            <th>Data de transfência</th>
+            <th>Data de agendamento</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </form>  
+  </div>
+
+  <script>
+    const dataTable = document.getElementById('data-table');
+    const dataTableBody = dataTable.getElementsByTagName('tbody')[0];
+    const insertForm = document.getElementById('insert-form');
+    const mensagemElement = document.getElementById('mensagem');
+    const mostrarExtratoButton = document.getElementById('mostrarExtrato');
+
+    const API_BASE_URL = 'http://localhost:8080';
+
+    function buscarDados() {
+      fetch(`${API_BASE_URL}/v1/transfers`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Erro na requisição: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          dataTableBody.innerHTML = ''; // Limpa a lista
+          data.forEach(item => {
+            const row = dataTableBody.insertRow();
+            const targetAccountCell = row.insertCell();
+            const sourceAccountCell = row.insertCell();
+            const amountCell = row.insertCell();
+            const rateCell = row.insertCell();
+            const transferAmountCell = row.insertCell();
+            const dateTransferCell = row.insertCell();
+            const appointmentDateCell = row.insertCell();
+
+            targetAccountCell.textContent = item.targetAccount || 'N/A';
+            sourceAccountCell.textContent = item.sourceAccount || 'N/A';
+            amountCell.textContent = item.amount || 'N/A';
+            rateCell.textContent = item.rate || '0.0';
+            transferAmountCell.textContent = item.transferAmount || 'N/A';
+            dateTransferCell.textContent = item.dateTransfer || 'N/A';
+            appointmentDateCell.textContent = item.appointmentDate || 'N/A';
+          });
+          dataTable.style.display = 'table';   //  Exibe a tabela após o carregamento dos dados
+        })
+        .catch(error => {
+          console.error('Erro ao buscar dados:', error);
+          mensagemElement.textContent = 'Erro ao buscar dados da API.';
+          mensagemElement.className = 'error-message';
+        });
+    }
+
+    function inserirDado(event) {
+      
+      event.preventDefault();
+
+      const contaOrigem = document.getElementById('contaOrigem').value;
+      const contaDestino = document.getElementById('contaDestino').value;
+      const valor = document.getElementById('valor').value;
+      const dataFuturaInput = document.getElementById('dataFutura').value;
+
+      if (!contaOrigem || !contaDestino || !valor || !dataFuturaInput) {
+          mensagemElement.textContent = 'Por favor, preencha todos os campos.';
+          mensagemElement.className = 'error-message';
+          return;
+      }
+
+      if (!/^\d{10}$/.test(contaOrigem) || !/^\d{10}$/.test(contaDestino)) {
+          mensagemElement.textContent = 'As contas de origem e destino devem conter exatamente 10 dígitos numéricos.';
+          mensagemElement.className = 'error-message';
+          return;
+      }
+
+      if (!/^\d+(\.\d{2})?$/.test(valor)) {
+          mensagemElement.textContent = 'O valor deve ser um número com até duas casas decimais.';
+          mensagemElement.className = 'error-message';
+          return;
+      }
+
+      const hoje = new Date();
+      const dataAgendamento = new Date(dataFuturaInput);
+
+      var dataAgendamentoFormatada = dataAgendamento;
+      dataAgendamentoFormatada.setDate(dataAgendamento.getDate() + 1);
+      dataAgendamentoFormatada.setHours(23, 59, 59, 999);
+
+      if (dataAgendamentoFormatada <= hoje) {
+        mensagemElement.textContent = 'A data de agendamento deve ser posterior à data atual.';
+        mensagemElement.className = 'error-message';
+        return;
+      }
+      
+      var dataAgendamentoJson = dataAgendamento;
+      dataAgendamentoJson.setDate(dataAgendamento.getDate() - 1);
+
+      const novoDado = {
+        targetAccount: contaOrigem,
+        sourceAccount: contaDestino,
+        amount: Number(valor),
+        dateTransfer: hoje,
+        appointmentDate: dataAgendamentoJson.toISOString()
+      };
+
+      fetch(`${API_BASE_URL}/v1/transfers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(novoDado)
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Erro na requisição: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(() => {
+          mensagemElement.textContent = 'Dado inserido com sucesso!';
+          mensagemElement.className = 'success-message';
+          insertForm.reset();
+        })
+        .catch(error => {
+          console.error('Erro ao inserir dado:', error);
+          mensagemElement.textContent = 'Erro ao inserir dado na API.';
+          mensagemElement.className = 'error-message';
+        });
+    }
+
+    // Event listener para o botão "Extrato"
+    mostrarExtratoButton.addEventListener('click', function () {
+      mensagemElement.hidden = 'true';
+      buscarDados(); // Chama a função para buscar e exibir os dados
+    });
+
+    insertForm.addEventListener('submit', inserirDado);
+  </script>
+</body>
+</html>
